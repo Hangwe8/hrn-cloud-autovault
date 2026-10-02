@@ -63,7 +63,6 @@ class VehicleUpdate(BaseModel):
     mileage: int | None = Field(default=None, ge=0)
     customer_id: int | None = None
 
-
 class VehicleResponse(BaseModel):
     id: int
     business_id: int
@@ -75,6 +74,13 @@ class VehicleResponse(BaseModel):
     year: int | None
     mileage: int | None
     model_config = ConfigDict(from_attributes=True)
+
+class VehicleListResponse(BaseModel):
+    items: list[VehicleResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 class ServiceRecordCreate(BaseModel):
     vehicle_id: int

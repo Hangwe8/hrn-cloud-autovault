@@ -28,16 +28,23 @@ def create_vehicle(
 
 @router.get(
     "/",
-    response_model=list[schemas.VehicleResponse]
+    response_model=schemas.VehicleListResponse
 )
 def get_vehicles(
-    
+    page: int = 1,
+    page_size: int = 25,
+    search: str | None = None,
+    include_archived: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     return crud.get_vehicles(
         db,
-        current_user.business_id
+        current_user.business_id,
+        page,
+        page_size,
+        search,
+        include_archived
     )
 
 @router.get(

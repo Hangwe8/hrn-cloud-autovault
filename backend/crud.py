@@ -128,16 +128,94 @@ def create_vehicle(
 
 def get_vehicles(
     db: Session,
-    business_id: int
+    business_id: int,
+    page: int = 1,
+    page_size: int = 25,
+    search: str | None = None,
+    include_archived: bool = False
 ):
-    return (
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Page must be greater than or equal to 1"
+        )
+
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Page size must be between 1 and 100"
+        )
+
+    query = (
         db.query(models.Vehicle)
         .filter(
-            models.Vehicle.business_id == business_id,
+            models.Vehicle.business_id == business_id
+        )
+    )
+
+    if not include_archived:
+        query = query.filter(
             models.Vehicle.deleted_at.is_(None)
         )
+
+    if search:
+        search_term = search.strip()
+
+        if search_term:
+            search_pattern = f"%{search_term}%"
+
+            query = query.filter(
+                (
+                    models.Vehicle.registration.ilike(
+                        search_pattern
+                    )
+                )
+                | (
+                    models.Vehicle.vin.ilike(
+                        search_pattern
+                    )
+                )
+                | (
+                    models.Vehicle.make.ilike(
+                        search_pattern
+                    )
+                )
+                | (
+                    models.Vehicle.model.ilike(
+                        search_pattern
+                    )
+                )
+            )
+
+    total = query.count()
+
+    offset = (page - 1) * page_size
+
+    vehicles = (
+        query
+        .order_by(
+            models.Vehicle.created_at.desc(),
+            models.Vehicle.id.desc()
+        )
+        .offset(offset)
+        .limit(page_size)
         .all()
     )
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
+    return {
+        "items": vehicles,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
+
 def create_service_record(
     db: Session,
     service: schemas.ServiceRecordCreate,
