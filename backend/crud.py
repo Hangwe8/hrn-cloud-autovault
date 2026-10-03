@@ -334,21 +334,116 @@ def create_job_card(db: Session, job_card: schemas.JobCardCreate, business_id: i
 def get_job_cards(
     db: Session,
     business_id: int,
+    page: int = 1,
+    page_size: int = 25,
+    search: str | None = None,
+    status: str | None = None,
     vehicle_id: int | None = None
 ):
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Page must be greater than or equal to 1"
+        )
+
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Page size must be between 1 and 100"
+        )
+
     query = (
         db.query(models.JobCard)
-        .filter(models.JobCard.business_id == business_id)
+        .filter(
+            models.JobCard.business_id == business_id
+        )
     )
 
+    # Status filter
+    if status:
+        valid_statuses = {
+            "RECEIVED",
+            "INSPECTION",
+            "QUOTED",
+            "APPROVED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "COLLECTED",
+            "CANCELLED"
+        }
+
+        if status not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid job card status: {status}"
+            )
+
+        query = query.filter(
+            models.JobCard.status == status
+        )
+
+    # Vehicle filter
     if vehicle_id is not None:
+        vehicle = (
+            db.query(models.Vehicle)
+            .filter(
+                models.Vehicle.id == vehicle_id,
+                models.Vehicle.business_id == business_id
+            )
+            .first()
+        )
+
+        if vehicle is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Vehicle not found"
+            )
+
         query = query.filter(
             models.JobCard.vehicle_id == vehicle_id
         )
 
-    return query.order_by(
-        models.JobCard.created_at.desc()
-    ).all()
+    # Search description
+    if search:
+        search_term = search.strip()
+
+        if search_term:
+            search_pattern = f"%{search_term}%"
+
+            query = query.filter(
+                models.JobCard.description.ilike(
+                    search_pattern
+                )
+            )
+
+    total = query.count()
+
+    offset = (page - 1) * page_size
+
+    job_cards = (
+        query
+        .order_by(
+            models.JobCard.created_at.desc(),
+            models.JobCard.id.desc()
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
+    return {
+        "items": job_cards,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
 
 def update_job_card_status(
     db: Session,

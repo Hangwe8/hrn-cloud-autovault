@@ -138,6 +138,13 @@ class JobCardResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class JobCardListResponse(BaseModel):
+    items: list[JobCardResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
 class JobCardStatusUpdate(BaseModel):
     status: JobStatus
     final_cost: Decimal| None = Field(default=None, ge=0)

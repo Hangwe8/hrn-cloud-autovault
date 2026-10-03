@@ -29,10 +29,13 @@ def create_job_card(
 
 @router.get(
     "/",
-    response_model=list[schemas.JobCardResponse]
+    response_model=schemas.JobCardListResponse
 )
 def get_job_cards(
-    business_id: int,
+    page: int = 1,
+    page_size: int = 25,
+    search: str | None = None,
+    status: schemas.JobStatus | None = None,
     vehicle_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -40,6 +43,10 @@ def get_job_cards(
     return crud.get_job_cards(
         db,
         current_user.business_id,
+        page,
+        page_size,
+        search,
+        status,
         vehicle_id
     )
 
