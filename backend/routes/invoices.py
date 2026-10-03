@@ -12,6 +12,28 @@ router = APIRouter(
     tags=["Invoices"]
 )
 
+@router.get(
+    "/",
+    response_model=schemas.InvoiceListResponse
+)
+def get_invoices(
+    page: int = 1,
+    page_size: int = 25,
+    status: str | None = None,
+    payment_state: str | None = None,
+    overdue_only: bool = False,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_invoices(
+        db,
+        current_user.business_id,
+        page,
+        page_size,
+        status,
+        payment_state,
+        overdue_only
+    )
 
 @router.get(
     "/{invoice_id}",

@@ -1249,6 +1249,132 @@ def get_invoice(
 
     return invoice
 
+def get_invoices(
+    db: Session,
+    business_id: int,
+    page: int = 1,
+    page_size: int = 25,
+    status: str | None = None,
+    payment_state: str | None = None,
+    overdue_only: bool = False
+):
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Page must be greater than or equal to 1"
+        )
+
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Page size must be between 1 and 100"
+        )
+
+    valid_statuses = {
+        "UNPAID",
+        "PARTIALLY_PAID",
+        "PAID",
+        "OVERDUE",
+        "CANCELLED"
+    }
+
+    valid_payment_states = {
+        "UNPAID",
+        "PARTIALLY_PAID",
+        "PAID"
+    }
+
+    if status and status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid invoice status: {status}"
+        )
+
+    if payment_state and payment_state not in valid_payment_states:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid payment state: {payment_state}"
+        )
+
+    query = (
+        db.query(models.Invoice)
+        .filter(
+            models.Invoice.business_id == business_id
+        )
+    )
+
+    if status:
+        query = query.filter(
+            models.Invoice.status == status
+        )
+
+    if overdue_only:
+        now = datetime.utcnow()
+
+        query = query.filter(
+            models.Invoice.due_date.is_not(None),
+            models.Invoice.due_date < now,
+            models.Invoice.status != "PAID",
+            models.Invoice.status != "CANCELLED"
+        )
+
+    invoices = query.order_by(
+        models.Invoice.created_at.desc(),
+        models.Invoice.id.desc()
+    ).all()
+
+    filtered_invoices = []
+
+    for invoice in invoices:
+        amount_paid = (
+            db.query(
+                func.coalesce(
+                    func.sum(models.Payment.amount),
+                    0
+                )
+            )
+            .filter(
+                models.Payment.invoice_id == invoice.id,
+                models.Payment.business_id == business_id,
+                models.Payment.reversed_at.is_(None)
+            )
+            .scalar()
+        )
+
+        amount_paid = money(amount_paid)
+
+        calculated_state = calculate_invoice_status(
+            invoice.total,
+            amount_paid
+        )
+
+        if payment_state and calculated_state != payment_state:
+            continue
+
+        filtered_invoices.append(invoice)
+
+    total = len(filtered_invoices)
+
+    offset = (page - 1) * page_size
+
+    paginated_invoices = filtered_invoices[
+        offset:offset + page_size
+    ]
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
+    return {
+        "items": paginated_invoices,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
+
 def get_dashboard_summary(
     db: Session,
     business_id: int,
