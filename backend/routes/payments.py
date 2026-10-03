@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 import crud
 import models
@@ -53,6 +54,33 @@ def get_invoice_payments(
         db,
         invoice_id,
         current_user.business_id
+    )
+
+@router.get(
+    "/",
+    response_model=schemas.PaymentListResponse
+)
+def get_payments(
+    page: int = 1,
+    page_size: int = 25,
+    invoice_id: int | None = None,
+    payment_method: schemas.PaymentMethod | None = None,
+    payment_status: str = "ACTIVE",
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_payments(
+        db,
+        current_user.business_id,
+        page,
+        page_size,
+        invoice_id,
+        payment_method,
+        payment_status,
+        start_date,
+        end_date
     )
 
 @router.post(

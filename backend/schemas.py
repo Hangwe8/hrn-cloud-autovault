@@ -365,7 +365,6 @@ class PaymentReverseRequest(BaseModel):
 
         return value
 
-
 class PaymentResponse(BaseModel):
     id: int
     business_id: int
@@ -382,6 +381,13 @@ class PaymentResponse(BaseModel):
         from_attributes=True
     )
 
+class PaymentListResponse(BaseModel):
+    items: list[PaymentResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
 class InvoiceBalanceResponse(BaseModel):
     invoice_id: int
     invoice_total: Decimal
@@ -396,7 +402,7 @@ class PaymentSummaryResponse(BaseModel):
     active_received: Decimal
 
 class PaymentReversalResponse(BaseModel):
-    payment_id: int
+    id: int
     invoice_id: int
     amount: Decimal
     payment_method: str

@@ -1867,6 +1867,142 @@ def reverse_payment(
         db.rollback()
         raise
 
+def get_payments(
+    db: Session,
+    business_id: int,
+    page: int = 1,
+    page_size: int = 25,
+    invoice_id: int | None = None,
+    payment_method: str | None = None,
+    payment_status: str = "ACTIVE",
+    start_date: datetime | None = None,
+    end_date: datetime | None = None
+):
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Page must be greater than or equal to 1"
+        )
+
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Page size must be between 1 and 100"
+        )
+
+    valid_methods = {
+        "CASH",
+        "CARD",
+        "EFT",
+        "DEBIT_ORDER",
+        "OTHER"
+    }
+
+    valid_payment_statuses = {
+        "ACTIVE",
+        "REVERSED",
+        "ALL"
+    }
+
+    if payment_method and payment_method not in valid_methods:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid payment method: {payment_method}"
+        )
+
+    if payment_status not in valid_payment_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid payment status: {payment_status}"
+        )
+
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=400,
+            detail="start_date cannot be after end_date"
+        )
+
+    query = (
+        db.query(models.Payment)
+        .filter(
+            models.Payment.business_id == business_id
+        )
+    )
+
+    if invoice_id is not None:
+        invoice = (
+            db.query(models.Invoice)
+            .filter(
+                models.Invoice.id == invoice_id,
+                models.Invoice.business_id == business_id
+            )
+            .first()
+        )
+
+        if invoice is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Invoice not found"
+            )
+
+        query = query.filter(
+            models.Payment.invoice_id == invoice_id
+        )
+
+    if payment_method:
+        query = query.filter(
+            models.Payment.payment_method == payment_method
+        )
+
+    if payment_status == "ACTIVE":
+        query = query.filter(
+            models.Payment.reversed_at.is_(None)
+        )
+
+    elif payment_status == "REVERSED":
+        query = query.filter(
+            models.Payment.reversed_at.is_not(None)
+        )
+
+    if start_date:
+        query = query.filter(
+            models.Payment.paid_at >= start_date
+        )
+
+    if end_date:
+        query = query.filter(
+            models.Payment.paid_at <= end_date
+        )
+
+    total = query.count()
+
+    offset = (page - 1) * page_size
+
+    payments = (
+        query
+        .order_by(
+            models.Payment.paid_at.desc(),
+            models.Payment.id.desc()
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
+    return {
+        "items": payments,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
+
 def get_invoice_payments(
     db: Session,
     invoice_id: int,
