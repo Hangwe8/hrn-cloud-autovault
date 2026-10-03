@@ -761,23 +761,100 @@ def create_invoice_from_quote(
 
     return invoice
 
-def get_quotes(db: Session, quote_id: int, business_id: int):
-    quote = (
+def get_quotes(
+    db: Session,
+    business_id: int,
+    page: int = 1,
+    page_size: int = 25,
+    status: str | None = None,
+    job_card_id: int | None = None
+):
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Page must be greater than or equal to 1"
+        )
+
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Page size must be between 1 and 100"
+        )
+
+    query = (
         db.query(models.Quote)
         .filter(
-            models.Quote.id == quote_id,
             models.Quote.business_id == business_id
         )
-        .first()
     )
 
-    if quote is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Quote not found"
+    if status:
+        valid_statuses = {
+            "DRAFT",
+            "SENT",
+            "APPROVED",
+            "REJECTED",
+            "EXPIRED"
+        }
+
+        if status not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid quote status: {status}"
+            )
+
+        query = query.filter(
+            models.Quote.status == status
         )
 
-    return quote
+    if job_card_id is not None:
+        job_card = (
+            db.query(models.JobCard)
+            .filter(
+                models.JobCard.id == job_card_id,
+                models.JobCard.business_id == business_id
+            )
+            .first()
+        )
+
+        if job_card is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Job card not found"
+            )
+
+        query = query.filter(
+            models.Quote.job_card_id == job_card_id
+        )
+
+    total = query.count()
+
+    offset = (page - 1) * page_size
+
+    quotes = (
+        query
+        .order_by(
+            models.Quote.created_at.desc(),
+            models.Quote.id.desc()
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
+    return {
+        "items": quotes,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
 
 def create_user(db: Session, user: schemas.UserCreate,business_id: int, created_by_user_id: int):
 

@@ -27,6 +27,27 @@ def create_quote(
     return crud.create_quote(db, quote, current_user.business_id)
 
 @router.get(
+    "/",
+    response_model=schemas.QuoteListResponse
+)
+def get_quotes(
+    page: int = 1,
+    page_size: int = 25,
+    status: schemas.QuoteStatus | None = None,
+    job_card_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_quotes(
+        db,
+        current_user.business_id,
+        page,
+        page_size,
+        status,
+        job_card_id
+    )
+
+@router.get(
     "/{quote_id}",
     response_model=schemas.QuoteResponse
 )
