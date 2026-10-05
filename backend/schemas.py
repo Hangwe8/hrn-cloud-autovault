@@ -82,6 +82,11 @@ class VehicleListResponse(BaseModel):
     page_size: int
     total_pages: int
 
+class CustomerVehicleSummaryResponse(BaseModel):
+    customer: CustomerResponse
+    total_vehicles: int
+    vehicles: list[VehicleResponse]
+
 class ServiceRecordCreate(BaseModel):
     vehicle_id: int
     mileage: int | None = Field

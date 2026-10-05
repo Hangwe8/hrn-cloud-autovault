@@ -2277,7 +2277,46 @@ def get_payment_reversals(
 
     return payments
         
+def get_customer_vehicle_summary(
+    db: Session,
+    business_id: int,
+    customer_id: int
+):
+    customer = (
+        db.query(models.Customer)
+        .filter(
+            models.Customer.id == customer_id,
+            models.Customer.business_id == business_id,
+            models.Customer.deleted_at.is_(None)
+        )
+        .first()
+    )
 
+    if customer is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer not found"
+        )
+
+    vehicles = (
+        db.query(models.Vehicle)
+        .filter(
+            models.Vehicle.business_id == business_id,
+            models.Vehicle.customer_id == customer_id,
+            models.Vehicle.deleted_at.is_(None)
+        )
+        .order_by(
+            models.Vehicle.created_at.desc(),
+            models.Vehicle.id.desc()
+        )
+        .all()
+    )
+
+    return {
+        "customer": customer,
+        "total_vehicles": len(vehicles),
+        "vehicles": vehicles
+    }
 
 
 

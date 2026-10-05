@@ -102,3 +102,18 @@ def delete_customer(
         current_user.id
 
     )
+
+@router.get(
+    "/{customer_id}/vehicles",
+    response_model=schemas.CustomerVehicleSummaryResponse
+)
+def get_customer_vehicle_summary(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_customer_vehicle_summary(
+        db,
+        current_user.business_id,
+        customer_id
+    )
