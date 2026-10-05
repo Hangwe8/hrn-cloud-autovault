@@ -1297,9 +1297,34 @@ def get_invoices(
         )
 
     query = (
-        db.query(models.Invoice)
+        db.query(
+            models.Invoice,
+            func.coalesce(
+                func.sum(
+                    models.Payment.amount
+                ),
+                0
+            ).label("amount_paid")
+        )
+        .outerjoin(
+            models.Payment,
+            (
+                models.Payment.invoice_id
+                == models.Invoice.id
+            )
+            & (
+                models.Payment.business_id
+                == business_id
+            )
+            & (
+                models.Payment.reversed_at.is_(None)
+            )
+        )
         .filter(
             models.Invoice.business_id == business_id
+        )
+        .group_by(
+            models.Invoice.id
         )
     )
 
@@ -1318,29 +1343,14 @@ def get_invoices(
             models.Invoice.status != "CANCELLED"
         )
 
-    invoices = query.order_by(
+    rows = query.order_by(
         models.Invoice.created_at.desc(),
         models.Invoice.id.desc()
     ).all()
 
-    filtered_invoices = []
+    filtered_rows = []
 
-    for invoice in invoices:
-        amount_paid = (
-            db.query(
-                func.coalesce(
-                    func.sum(models.Payment.amount),
-                    0
-                )
-            )
-            .filter(
-                models.Payment.invoice_id == invoice.id,
-                models.Payment.business_id == business_id,
-                models.Payment.reversed_at.is_(None)
-            )
-            .scalar()
-        )
-
+    for invoice, amount_paid in rows:
         amount_paid = money(amount_paid)
 
         calculated_state = calculate_invoice_status(
@@ -1348,16 +1358,19 @@ def get_invoices(
             amount_paid
         )
 
-        if payment_state and calculated_state != payment_state:
+        if (
+            payment_state
+            and calculated_state != payment_state
+        ):
             continue
 
-        filtered_invoices.append(invoice)
+        filtered_rows.append(invoice)
 
-    total = len(filtered_invoices)
+    total = len(filtered_rows)
 
     offset = (page - 1) * page_size
 
-    paginated_invoices = filtered_invoices[
+    paginated_invoices = filtered_rows[
         offset:offset + page_size
     ]
 
