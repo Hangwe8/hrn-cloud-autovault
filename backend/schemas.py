@@ -115,6 +115,13 @@ JobStatus = Literal[
     "CANCELLED"
 ]
 
+class ServiceRecordListResponse(BaseModel):
+    items: list[ServiceRecordResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
 
 class JobCardCreate(BaseModel):
     vehicle_id: int

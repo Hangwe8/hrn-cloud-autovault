@@ -1227,6 +1227,82 @@ def get_service_record(
 
     return service_record
 
+def get_service_records(
+    db: Session,
+    business_id: int,
+    page: int = 1,
+    page_size: int = 25,
+    vehicle_id: int | None = None
+):
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Page must be greater than or equal to 1"
+        )
+
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Page size must be between 1 and 100"
+        )
+
+    query = (
+        db.query(models.ServiceRecord)
+        .filter(
+            models.ServiceRecord.business_id == business_id
+        )
+    )
+
+    if vehicle_id is not None:
+        vehicle = (
+            db.query(models.Vehicle)
+            .filter(
+                models.Vehicle.id == vehicle_id,
+                models.Vehicle.business_id == business_id,
+                models.Vehicle.deleted_at.is_(None)
+            )
+            .first()
+        )
+
+        if vehicle is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Vehicle not found"
+            )
+
+        query = query.filter(
+            models.ServiceRecord.vehicle_id == vehicle_id
+        )
+
+    total = query.count()
+
+    offset = (page - 1) * page_size
+
+    records = (
+        query
+        .order_by(
+            models.ServiceRecord.service_date.desc(),
+            models.ServiceRecord.id.desc()
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
+    return {
+        "items": records,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
+
 def get_invoice(
     db: Session,
     invoice_id: int,
@@ -2201,7 +2277,6 @@ def get_payment_reversals(
 
     return payments
         
-
 
 
 

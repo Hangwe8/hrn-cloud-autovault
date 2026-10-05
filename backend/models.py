@@ -205,6 +205,7 @@ class ServiceRecord(Base):
         CheckConstraint("parts_cost >= 0", name="ck_service_parts_cost_non_negative"),
         CheckConstraint("labour_cost >= 0", name="ck_service_labour_cost_non_negative"),
         CheckConstraint("total_cost >= 0", name="ck_service_total_cost_non_negative"),
+        Index("ix_service_records_business_created_at", "business_id", "service_date"),
     )
 
     id: Mapped[int] = mapped_column(

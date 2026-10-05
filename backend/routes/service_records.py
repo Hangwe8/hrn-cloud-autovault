@@ -65,3 +65,22 @@ def get_service_record(
         current_user.business_id
 
     )
+
+@router.get(
+    "/",
+    response_model=schemas.ServiceRecordListResponse
+)
+def get_service_records(
+    page: int = 1,
+    page_size: int = 25,
+    vehicle_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_service_records(
+        db,
+        current_user.business_id,
+        page,
+        page_size,
+        vehicle_id
+    )
