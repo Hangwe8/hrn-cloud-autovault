@@ -425,5 +425,10 @@ class PaymentReversalResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
+class Vehicle360Response(BaseModel):
+    vehicle: VehicleResponse
+    customer: CustomerResponse
+    latest_service: ServiceRecordResponse | None
+    open_job_cards: JobCardResponse | None
+    outstanding_amount: Decimal
 

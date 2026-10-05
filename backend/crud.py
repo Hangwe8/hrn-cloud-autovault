@@ -2318,5 +2318,121 @@ def get_customer_vehicle_summary(
         "vehicles": vehicles
     }
 
+def get_vehicle_360(
+    db: Session,
+    business_id: int,
+    vehicle_id: int
+):
+    vehicle = (
+        db.query(models.Vehicle)
+        .filter(
+            models.Vehicle.id == vehicle_id,
+            models.Vehicle.business_id == business_id,
+            models.Vehicle.deleted_at.is_(None)
+        )
+        .first()
+    )
 
+    if vehicle is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Vehicle not found"
+        )
+
+    customer = (
+        db.query(models.Customer)
+        .filter(
+            models.Customer.id == vehicle.customer_id,
+            models.Customer.business_id == business_id,
+            models.Customer.deleted_at.is_(None)
+        )
+        .first()
+    )
+
+    if customer is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Vehicle owner not found"
+        )
+
+    latest_service = (
+        db.query(models.ServiceRecord)
+        .filter(
+            models.ServiceRecord.vehicle_id == vehicle.id,
+            models.ServiceRecord.business_id == business_id
+        )
+        .order_by(
+            models.ServiceRecord.service_date.desc(),
+            models.ServiceRecord.id.desc()
+        )
+        .first()
+    )
+
+    open_job_card = (
+        db.query(models.JobCard)
+        .filter(
+            models.JobCard.vehicle_id == vehicle.id,
+            models.JobCard.business_id == business_id,
+            models.JobCard.status.notin_(
+                ["COMPLETED", "COLLECTED", "CANCELLED"]
+            )
+        )
+        .order_by(
+            models.JobCard.created_at.desc(),
+            models.JobCard.id.desc()
+        )
+        .first()
+    )
+
+    invoices = (
+        db.query(models.Invoice)
+        .filter(
+            models.Invoice.business_id == business_id
+        )
+        .join(
+            models.Quote,
+            models.Invoice.quote_id == models.Quote.id
+        )
+        .join(
+            models.JobCard,
+            models.Quote.job_card_id == models.JobCard.id
+        )
+        .filter(
+            models.JobCard.vehicle_id == vehicle.id
+        )
+        .all()
+    )
+
+    outstanding_amount = Decimal("0.00")
+
+    for invoice in invoices:
+        if invoice.status in ["PAID", "CANCELLED"]:
+            continue
+
+        amount_paid = (
+            db.query(
+                func.coalesce(
+                    func.sum(models.Payment.amount),
+                    0
+                )
+            )
+            .filter(
+                models.Payment.invoice_id == invoice.id,
+                models.Payment.business_id == business_id,
+                models.Payment.reversed_at.is_(None)
+            )
+            .scalar()
+        )
+
+        outstanding_amount += (
+            money(invoice.total) - money(amount_paid)
+        )
+
+    return {
+        "vehicle": vehicle,
+        "customer": customer,
+        "latest_service": latest_service,
+        "open_job_card": open_job_card,
+        "outstanding_amount": money(outstanding_amount)
+    }
 

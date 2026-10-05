@@ -105,3 +105,18 @@ def delete_vehicle(
         current_user.id
 
     )
+
+@router.get(
+    "/{vehicle_id}/360",
+    response_model=schemas.Vehicle360Response
+)
+def get_vehicle_360(
+    vehicle_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_vehicle_360(
+        db,
+        current_user.business_id,
+        vehicle_id
+    )
