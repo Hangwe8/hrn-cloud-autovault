@@ -443,3 +443,7 @@ class VehicleTimelineItem(BaseModel):
 class VehicleTimelineResponse(BaseModel):
     vehicle_id: int
     items: list[VehicleTimelineItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

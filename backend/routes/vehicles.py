@@ -127,11 +127,15 @@ def get_vehicle_360(
 )
 def get_vehicle_timeline(
     vehicle_id: int,
+    page: int = 1,
+    page_size: int = 25,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     return crud.get_vehicle_timeline(
         db,
         current_user.business_id,
-        vehicle_id
+        vehicle_id,
+        page,
+        page_size
     )

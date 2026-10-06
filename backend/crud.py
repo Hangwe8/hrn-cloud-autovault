@@ -2456,8 +2456,22 @@ def get_vehicle_360(
 def get_vehicle_timeline(
     db: Session,
     business_id: int,
-    vehicle_id: int
+    vehicle_id: int,
+    page: int = 1,
+    page_size: int = 25
 ):
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Page must be greater than or equal to 1"
+        )
+
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Page size must be between 1 and 100"
+        )
+
     vehicle = (
         db.query(models.Vehicle)
         .filter(
@@ -2507,6 +2521,13 @@ def get_vehicle_timeline(
     )
 
     for job in job_cards:
+        amount = None
+
+        if job.final_cost is not None:
+            amount = money(job.final_cost)
+        elif job.estimated_cost is not None:
+            amount = money(job.estimated_cost)
+
         timeline.append(
             {
                 "event_type": "JOB_CARD",
@@ -2514,13 +2535,7 @@ def get_vehicle_timeline(
                 "event_date": job.created_at,
                 "title": f"Job card: {job.status}",
                 "description": job.description,
-                "amount": (
-                    money(job.final_cost)
-                    if job.final_cost is not None
-                    else money(job.estimated_cost)
-                    if job.estimated_cost is not None
-                    else None
-                )
+                "amount": amount
             }
         )
 
@@ -2589,7 +2604,25 @@ def get_vehicle_timeline(
         reverse=True
     )
 
+    total = len(timeline)
+
+    offset = (page - 1) * page_size
+
+    paginated_items = timeline[
+        offset:offset + page_size
+    ]
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
     return {
         "vehicle_id": vehicle_id,
-        "items": timeline
+        "items": paginated_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
     }
