@@ -265,6 +265,7 @@ class JobCard(Base):
          Index("ix_job_cards_business_created_at", "business_id", "created_at"),
         Index("ix_job_cards_business_status", "business_id", "status"),
         Index("ix_job_cards_business_vehicle", "business_id", "vehicle_id"),
+        Index("ix_job_cards_business_vehicle_created", "business_id", "vehicle_id", "created_at"),
         Index("ix_job_cards_business_staff", "business_id", "assigned_staff_id"),
     )
 
@@ -314,6 +315,7 @@ class Quote(Base):
         Index("ix_quotes_business_created_at", "business_id", "created_at"),
         Index("ix_quotes_business_status", "business_id", "status"),
         Index("ix_quotes_business_job_card", "business_id", "job_card_id"),
+        Index("ix_quotes_business_job_card_created", "business_id", "job_card_id", "created_at")
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -391,6 +393,7 @@ class Invoice(Base):
         Index("ix_invoices_business_created_at", "business_id", "created_at"),
         Index("ix_invoices_business_status", "business_id", "status"),
         Index("ix_invoices_business_due_date", "business_id", "due_date"),
+        Index("ix_invoices_business_quote_created", "business_id", "quote_id", "created_at")
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
