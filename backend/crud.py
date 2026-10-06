@@ -2374,7 +2374,11 @@ def get_vehicle_360(
             models.JobCard.vehicle_id == vehicle.id,
             models.JobCard.business_id == business_id,
             models.JobCard.status.notin_(
-                ["COMPLETED", "COLLECTED", "CANCELLED"]
+                [
+                    "COMPLETED",
+                    "COLLECTED",
+                    "CANCELLED"
+                ]
             )
         )
         .order_by(
@@ -2384,10 +2388,36 @@ def get_vehicle_360(
         .first()
     )
 
-    invoices = (
-        db.query(models.Invoice)
+    payment_totals = (
+        db.query(
+            models.Payment.invoice_id.label("invoice_id"),
+            func.coalesce(
+                func.sum(models.Payment.amount),
+                0
+            ).label("amount_paid")
+        )
         .filter(
-            models.Invoice.business_id == business_id
+            models.Payment.business_id == business_id,
+            models.Payment.reversed_at.is_(None)
+        )
+        .group_by(
+            models.Payment.invoice_id
+        )
+        .subquery()
+    )
+
+    outstanding_amount = (
+        db.query(
+            func.coalesce(
+                func.sum(
+                    models.Invoice.total
+                    - func.coalesce(
+                        payment_totals.c.amount_paid,
+                        0
+                    )
+                ),
+                0
+            )
         )
         .join(
             models.Quote,
@@ -2397,42 +2427,28 @@ def get_vehicle_360(
             models.JobCard,
             models.Quote.job_card_id == models.JobCard.id
         )
+        .outerjoin(
+            payment_totals,
+            payment_totals.c.invoice_id
+            == models.Invoice.id
+        )
         .filter(
-            models.JobCard.vehicle_id == vehicle.id
+            models.Invoice.business_id == business_id,
+            models.JobCard.business_id == business_id,
+            models.JobCard.vehicle_id == vehicle.id,
+            models.Invoice.status.notin_(
+                ["PAID", "CANCELLED"]
+            )
         )
-        .all()
+        .scalar()
     )
-
-    outstanding_amount = Decimal("0.00")
-
-    for invoice in invoices:
-        if invoice.status in ["PAID", "CANCELLED"]:
-            continue
-
-        amount_paid = (
-            db.query(
-                func.coalesce(
-                    func.sum(models.Payment.amount),
-                    0
-                )
-            )
-            .filter(
-                models.Payment.invoice_id == invoice.id,
-                models.Payment.business_id == business_id,
-                models.Payment.reversed_at.is_(None)
-            )
-            .scalar()
-        )
-
-        outstanding_amount += (
-            money(invoice.total) - money(amount_paid)
-        )
 
     return {
         "vehicle": vehicle,
         "customer": customer,
         "latest_service": latest_service,
         "open_job_card": open_job_card,
-        "outstanding_amount": money(outstanding_amount)
+        "outstanding_amount": money(
+            outstanding_amount or Decimal("0.00")
+        )
     }
-
