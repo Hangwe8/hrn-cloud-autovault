@@ -1,6 +1,6 @@
 from sqlalchemy import update
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, String
 from fastapi import HTTPException
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
@@ -2488,85 +2488,90 @@ def get_vehicle_timeline(
             detail="Vehicle not found"
         )
 
-    timeline = []
-
-    service_records = (
-        db.query(models.ServiceRecord)
-        .filter(
-            models.ServiceRecord.vehicle_id == vehicle_id,
-            models.ServiceRecord.business_id == business_id
+    service_query = (
+        db.query(
+            models.ServiceRecord.id.label("event_id"),
+            models.ServiceRecord.service_date.label("event_date"),
+            func.cast("SERVICE", String).label("event_type"),
+            func.cast(
+                "Service completed",
+                String
+            ).label("title"),
+            models.ServiceRecord.description.label(
+                "description"
+            ),
+            models.ServiceRecord.total_cost.label(
+                "amount"
+            )
         )
-        .all()
+        .filter(
+            models.ServiceRecord.business_id == business_id,
+            models.ServiceRecord.vehicle_id == vehicle_id
+        )
     )
 
-    for record in service_records:
-        timeline.append(
-            {
-                "event_type": "SERVICE",
-                "event_id": record.id,
-                "event_date": record.service_date,
-                "title": "Service completed",
-                "description": record.description,
-                "amount": money(record.total_cost)
-            }
+    job_query = (
+        db.query(
+            models.JobCard.id.label("event_id"),
+            models.JobCard.created_at.label("event_date"),
+            func.cast("JOB_CARD", String).label("event_type"),
+            func.concat(
+                "Job card: ",
+                models.JobCard.status
+            ).label("title"),
+            models.JobCard.description.label(
+                "description"
+            ),
+            func.coalesce(
+                models.JobCard.final_cost,
+                models.JobCard.estimated_cost
+            ).label("amount")
         )
-
-    job_cards = (
-        db.query(models.JobCard)
         .filter(
-            models.JobCard.vehicle_id == vehicle_id,
-            models.JobCard.business_id == business_id
+            models.JobCard.business_id == business_id,
+            models.JobCard.vehicle_id == vehicle_id
         )
-        .all()
     )
 
-    for job in job_cards:
-        amount = None
-
-        if job.final_cost is not None:
-            amount = money(job.final_cost)
-        elif job.estimated_cost is not None:
-            amount = money(job.estimated_cost)
-
-        timeline.append(
-            {
-                "event_type": "JOB_CARD",
-                "event_id": job.id,
-                "event_date": job.created_at,
-                "title": f"Job card: {job.status}",
-                "description": job.description,
-                "amount": amount
-            }
+    quote_query = (
+        db.query(
+            models.Quote.id.label("event_id"),
+            models.Quote.created_at.label("event_date"),
+            func.cast("QUOTE", String).label("event_type"),
+            func.concat(
+                "Quote: ",
+                models.Quote.status
+            ).label("title"),
+            func.cast(None, String).label(
+                "description"
+            ),
+            models.Quote.total.label("amount")
         )
-
-    quotes = (
-        db.query(models.Quote)
         .join(
             models.JobCard,
             models.Quote.job_card_id == models.JobCard.id
         )
         .filter(
-            models.JobCard.vehicle_id == vehicle_id,
+            models.Quote.business_id == business_id,
             models.JobCard.business_id == business_id,
-            models.Quote.business_id == business_id
+            models.JobCard.vehicle_id == vehicle_id
         )
-        .all()
     )
 
-    for quote in quotes:
-        timeline.append(
-            {
-                "event_type": "QUOTE",
-                "event_id": quote.id,
-                "event_date": quote.created_at,
-                "title": f"Quote: {quote.status}",
-                "description": None,
-                "amount": money(quote.total)
-            }
+    invoice_query = (
+        db.query(
+            models.Invoice.id.label("event_id"),
+            models.Invoice.created_at.label("event_date"),
+            func.cast("INVOICE", String).label("event_type"),
+            func.concat(
+                "Invoice: ",
+                models.Invoice.status
+            ).label("title"),
+            models.Invoice.invoice_number.label(
+                "description"
+            ),
+            models.Invoice.total.label("amount")
         )
-
-    invoices = (
-        db.query(models.Invoice)
         .join(
             models.Quote,
             models.Invoice.quote_id == models.Quote.id
@@ -2576,41 +2581,58 @@ def get_vehicle_timeline(
             models.Quote.job_card_id == models.JobCard.id
         )
         .filter(
-            models.JobCard.vehicle_id == vehicle_id,
+            models.Invoice.business_id == business_id,
+            models.Quote.business_id == business_id,
             models.JobCard.business_id == business_id,
-            models.Invoice.business_id == business_id
+            models.JobCard.vehicle_id == vehicle_id
         )
-        .all()
     )
 
-    for invoice in invoices:
-        timeline.append(
-            {
-                "event_type": "INVOICE",
-                "event_id": invoice.id,
-                "event_date": invoice.created_at,
-                "title": f"Invoice: {invoice.status}",
-                "description": invoice.invoice_number,
-                "amount": money(invoice.total)
-            }
-        )
+    timeline_query = service_query.union_all(
+        job_query,
+        quote_query,
+        invoice_query
+    ).subquery()
 
-    timeline.sort(
-        key=lambda item: (
-            item["event_date"],
-            item["event_type"],
-            item["event_id"]
-        ),
-        reverse=True
+    total = (
+        db.query(func.count())
+        .select_from(timeline_query)
+        .scalar()
     )
-
-    total = len(timeline)
 
     offset = (page - 1) * page_size
 
-    paginated_items = timeline[
-        offset:offset + page_size
-    ]
+    rows = (
+        db.query(timeline_query)
+        .order_by(
+            timeline_query.c.event_date.desc(),
+            timeline_query.c.event_type.asc(),
+            timeline_query.c.event_id.desc()
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+
+    items = []
+
+    for row in rows:
+        items.append(
+            {
+                "event_type": row.event_type,
+                "event_id": row.event_id,
+                "event_date": row.event_date,
+                "title": row.title,
+                "description": row.description,
+                "amount": (
+                    money(row.amount)
+                    if row.amount is not None
+                    else None
+                )
+            }
+        )
+
+    total = total or 0
 
     total_pages = (
         (total + page_size - 1) // page_size
@@ -2620,7 +2642,7 @@ def get_vehicle_timeline(
 
     return {
         "vehicle_id": vehicle_id,
-        "items": paginated_items,
+        "items": items,
         "total": total,
         "page": page,
         "page_size": page_size,
