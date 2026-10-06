@@ -120,3 +120,18 @@ def get_vehicle_360(
         current_user.business_id,
         vehicle_id
     )
+
+@router.get(
+    "/{vehicle_id}/timeline",
+    response_model=schemas.VehicleTimelineResponse
+)
+def get_vehicle_timeline(
+    vehicle_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_vehicle_timeline(
+        db,
+        current_user.business_id,
+        vehicle_id
+    )

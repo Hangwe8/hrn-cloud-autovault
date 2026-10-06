@@ -2452,3 +2452,144 @@ def get_vehicle_360(
             outstanding_amount or Decimal("0.00")
         )
     }
+
+def get_vehicle_timeline(
+    db: Session,
+    business_id: int,
+    vehicle_id: int
+):
+    vehicle = (
+        db.query(models.Vehicle)
+        .filter(
+            models.Vehicle.id == vehicle_id,
+            models.Vehicle.business_id == business_id,
+            models.Vehicle.deleted_at.is_(None)
+        )
+        .first()
+    )
+
+    if vehicle is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Vehicle not found"
+        )
+
+    timeline = []
+
+    service_records = (
+        db.query(models.ServiceRecord)
+        .filter(
+            models.ServiceRecord.vehicle_id == vehicle_id,
+            models.ServiceRecord.business_id == business_id
+        )
+        .all()
+    )
+
+    for record in service_records:
+        timeline.append(
+            {
+                "event_type": "SERVICE",
+                "event_id": record.id,
+                "event_date": record.service_date,
+                "title": "Service completed",
+                "description": record.description,
+                "amount": money(record.total_cost)
+            }
+        )
+
+    job_cards = (
+        db.query(models.JobCard)
+        .filter(
+            models.JobCard.vehicle_id == vehicle_id,
+            models.JobCard.business_id == business_id
+        )
+        .all()
+    )
+
+    for job in job_cards:
+        timeline.append(
+            {
+                "event_type": "JOB_CARD",
+                "event_id": job.id,
+                "event_date": job.created_at,
+                "title": f"Job card: {job.status}",
+                "description": job.description,
+                "amount": (
+                    money(job.final_cost)
+                    if job.final_cost is not None
+                    else money(job.estimated_cost)
+                    if job.estimated_cost is not None
+                    else None
+                )
+            }
+        )
+
+    quotes = (
+        db.query(models.Quote)
+        .join(
+            models.JobCard,
+            models.Quote.job_card_id == models.JobCard.id
+        )
+        .filter(
+            models.JobCard.vehicle_id == vehicle_id,
+            models.JobCard.business_id == business_id,
+            models.Quote.business_id == business_id
+        )
+        .all()
+    )
+
+    for quote in quotes:
+        timeline.append(
+            {
+                "event_type": "QUOTE",
+                "event_id": quote.id,
+                "event_date": quote.created_at,
+                "title": f"Quote: {quote.status}",
+                "description": None,
+                "amount": money(quote.total)
+            }
+        )
+
+    invoices = (
+        db.query(models.Invoice)
+        .join(
+            models.Quote,
+            models.Invoice.quote_id == models.Quote.id
+        )
+        .join(
+            models.JobCard,
+            models.Quote.job_card_id == models.JobCard.id
+        )
+        .filter(
+            models.JobCard.vehicle_id == vehicle_id,
+            models.JobCard.business_id == business_id,
+            models.Invoice.business_id == business_id
+        )
+        .all()
+    )
+
+    for invoice in invoices:
+        timeline.append(
+            {
+                "event_type": "INVOICE",
+                "event_id": invoice.id,
+                "event_date": invoice.created_at,
+                "title": f"Invoice: {invoice.status}",
+                "description": invoice.invoice_number,
+                "amount": money(invoice.total)
+            }
+        )
+
+    timeline.sort(
+        key=lambda item: (
+            item["event_date"],
+            item["event_type"],
+            item["event_id"]
+        ),
+        reverse=True
+    )
+
+    return {
+        "vehicle_id": vehicle_id,
+        "items": timeline
+    }

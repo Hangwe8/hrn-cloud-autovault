@@ -432,3 +432,14 @@ class Vehicle360Response(BaseModel):
     open_job_cards: JobCardResponse | None
     outstanding_amount: Decimal
 
+class VehicleTimelineItem(BaseModel):
+    event_type: str
+    event_id: int
+    event_date: datetime
+    title: str
+    description: str | None = None
+    amount: Decimal | None = None
+
+class VehicleTimelineResponse(BaseModel):
+    vehicle_id: int
+    items: list[VehicleTimelineItem]
