@@ -1,9 +1,9 @@
-def test_login_success(client):
+def test_login_success(client, test_user):
     response = client.post(
         "/auth/login",
         json={
-            "email": "james@hrnautoworkshop.co.za",
-            "password": "HRN2024"
+            "email": "test-user@example.com",
+            "password": "TestPassword123!"
         }
     )
 
@@ -16,12 +16,12 @@ def test_login_success(client):
     assert data["access_token"]
 
 
-def test_login_wrong_password(client):
+def test_login_wrong_password(client, test_user):
     response = client.post(
         "/auth/login",
         json={
-            "email": "james@hrnautoworkshop.co.za",
-            "password": "WrongHRN2024"
+            "email": "test-user@example.com",
+            "password": "WrongPassword123!"
         }
     )
 
@@ -32,20 +32,20 @@ def test_login_unknown_user(client):
     response = client.post(
         "/auth/login",
         json={
-            "email": "doesnotexist@example.com",
-            "password": "WrongHRN2024"
+            "email": "unknown@example.com",
+            "password": "TestPassword123!"
         }
     )
 
     assert response.status_code == 401
 
 
-def test_auth_me_success(client):
+def test_auth_me_success(client, test_user):
     login_response = client.post(
         "/auth/login",
         json={
-            "email": "james@hrnautoworkshop.co.za",
-            "password": "HRN2024"
+            "email": "test-user@example.com",
+            "password": "TestPassword123!"
         }
     )
 
@@ -64,8 +64,8 @@ def test_auth_me_success(client):
 
     data = response.json()
 
-    assert data["email"] == "james@hrnautoworkshop.co.za"
-    assert data["business_id"] == 1
+    assert data["email"] == "test-user@example.com"
+    assert data["business_id"] == test_user.business_id
 
 
 def test_auth_me_without_token(client):

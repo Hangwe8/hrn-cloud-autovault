@@ -12,6 +12,16 @@ import models
 # access to the values within the .ini file in use.
 config = context.config
 
+database_url = context.get_x_argument(
+    as_dictionary=True
+).get("database_url")
+
+if database_url:
+    config.set_main_option(
+        "sqlalchemy.url",
+        database_url
+    )
+    
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
