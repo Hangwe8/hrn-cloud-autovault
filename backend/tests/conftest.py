@@ -1,47 +1,88 @@
 import os
 
-os.environ["DATABASE_URL"] = (
+TEST_DATABASE_URL = (
     "postgresql://localhost/hrn_autovault_test"
 )
+
+# Set this before importing the application or database engine.
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+
+if "hrn_autovault_test" not in TEST_DATABASE_URL:
+    raise RuntimeError("Refusing to run tests on a non-test database")
 
 import pytest
 
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from main import app
-from database import SessionLocal
+from database import engine, get_db
 import models
 import security
 
 
 @pytest.fixture
 def db():
-    database = SessionLocal()
+    connection = engine.connect()
+    outer_transaction = connection.begin()
+
+    session = Session(
+        bind=connection,
+        expire_on_commit=False
+    )
+
+    session.begin_nested()
+
+    @event.listens_for(session, "after_transaction_end")
+    def restart_savepoint(session, transaction):
+        if (
+            transaction.nested
+            and transaction._parent is not None
+            and not transaction._parent.nested
+        ):
+            session.begin_nested()
 
     try:
-        yield database
+        yield session
     finally:
-        database.rollback()
-        database.close()
+        session.close()
+
+        if outer_transaction.is_active:
+            outer_transaction.rollback()
+
+        connection.close()
 
 
 @pytest.fixture
-def test_business(db: Session):
+def client(db):
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_business(db):
     business = models.Business(
         name="Test Auto Workshop",
         email="test-business@example.com"
     )
 
     db.add(business)
-    db.commit()
-    db.refresh(business)
+    db.flush()
 
     return business
 
 
 @pytest.fixture
-def test_user(db: Session, test_business):
+def test_user(db, test_business):
     user = models.User(
         business_id=test_business.id,
         name="Test User",
@@ -53,86 +94,26 @@ def test_user(db: Session, test_business):
     )
 
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    db.flush()
 
     return user
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
-
-@pytest.fixture(autouse=True)
-def cleanup_test_data():
-    yield
-
-    db = SessionLocal()
-
-    try:
-        test_business = (
-            db.query(models.Business)
-            .filter(
-                models.Business.email == "test-business@example.com"
-            )
-            .first()
-        )
-
-        second_business = (
-            db.query(models.Business)
-            .filter(
-                models.Business.email == "second-business@example.com"
-            )
-            .first()
-        )
-
-        business_ids = [
-            business.id
-            for business in [test_business, second_business]
-            if business is not None
-        ]
-
-        if business_ids:
-            db.query(models.Vehicle).filter(
-                models.Vehicle.business_id.in_(business_ids)
-            ).delete(synchronize_session=False)
-            
-            db.query(models.Customer).filter(
-                models.Customer.business_id.in_(business_ids)
-            ).delete(synchronize_session=False)
-
-        db.query(models.User).filter(
-            models.User.email.in_([
-                "test-user@example.com",
-                "second-user@example.com"
-            ])
-        ).delete(synchronize_session=False)
-
-        if business_ids:
-            db.query(models.Business).filter(
-                models.Business.id.in_(business_ids)
-            ).delete(synchronize_session=False)
-
-        db.commit()
-
-    finally:
-        db.close()
-
-@pytest.fixture
-def second_business(db: Session):
+def second_business(db):
     business = models.Business(
         name="Second Test Workshop",
         email="second-business@example.com"
     )
 
     db.add(business)
-    db.commit()
-    db.refresh(business)
+    db.flush()
 
     return business
 
+
 @pytest.fixture
-def second_user(db: Session, second_business):
+def second_user(db, second_business):
     user = models.User(
         business_id=second_business.id,
         name="Second User",
@@ -144,7 +125,6 @@ def second_user(db: Session, second_business):
     )
 
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    db.flush()
 
     return user
