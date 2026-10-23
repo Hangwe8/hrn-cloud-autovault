@@ -1,4 +1,5 @@
 from decimal import Decimal
+import models
 
 
 def get_auth_headers(client):
@@ -235,3 +236,121 @@ def test_payment_reversal_restores_invoice_balance(client, test_user):
     assert Decimal(str(balance["amount_paid"])) == Decimal("0.00")
     assert Decimal(str(balance["balance"])) == Decimal("1150.00")
     assert balance["status"] == "UNPAID"
+
+
+def test_payment_reversal_preserves_record_and_audit_trail(
+    client, db, test_user
+):
+    headers = get_auth_headers(client)
+    invoice = create_test_invoice(client, headers)
+
+    payment_response = client.post(
+        "/payments/",
+        headers=headers,
+        json={
+            "invoice_id": invoice["id"],
+            "amount": "500.00",
+            "payment_method": "EFT",
+            "reference": "AUDIT-REVERSAL-001"
+        }
+    )
+    assert payment_response.status_code in [200, 201], (
+        payment_response.text
+    )
+
+    payment_id = payment_response.json()["id"]
+    reason = "Customer payment entered incorrectly"
+
+    reversal_response = client.post(
+        f"/payments/{payment_id}/reverse",
+        headers=headers,
+        json={"reason": reason}
+    )
+    assert reversal_response.status_code == 200, (
+        reversal_response.text
+    )
+
+    # The original payment must remain in the database.
+    payment = (
+        db.query(models.Payment)
+        .filter(
+            models.Payment.id == payment_id,
+            models.Payment.business_id == test_user.business_id
+        )
+        .one()
+    )
+
+    assert payment.reversed_at is not None
+    assert payment.reversal_reason == reason
+    assert payment.amount == Decimal("500.00")
+
+    # Exactly one reversal audit event must exist for this payment.
+    audit_entries = (
+        db.query(models.AuditLog)
+        .filter(
+            models.AuditLog.business_id == test_user.business_id,
+            models.AuditLog.action == "PAYMENT_REVERSED",
+            models.AuditLog.entity_type == "Payment",
+            models.AuditLog.entity_id == payment_id
+        )
+        .all()
+    )
+
+    assert len(audit_entries) == 1
+    assert audit_entries[0].user_id == test_user.id
+    assert reason in audit_entries[0].details
+
+
+def test_reversing_payment_twice_does_not_duplicate_audit(
+    client, db, test_user
+):
+    headers = get_auth_headers(client)
+    invoice = create_test_invoice(client, headers)
+
+    payment_response = client.post(
+        "/payments/",
+        headers=headers,
+        json={
+            "invoice_id": invoice["id"],
+            "amount": "500.00",
+            "payment_method": "EFT",
+            "reference": "AUDIT-DOUBLE-REVERSAL"
+        }
+    )
+    assert payment_response.status_code in [200, 201], (
+        payment_response.text
+    )
+
+    payment_id = payment_response.json()["id"]
+    reversal_payload = {
+        "reason": "Duplicate reversal protection test"
+    }
+
+    first_response = client.post(
+        f"/payments/{payment_id}/reverse",
+        headers=headers,
+        json=reversal_payload
+    )
+    assert first_response.status_code == 200, first_response.text
+
+    second_response = client.post(
+        f"/payments/{payment_id}/reverse",
+        headers=headers,
+        json=reversal_payload
+    )
+    assert second_response.status_code == 400, (
+        second_response.text
+    )
+
+    audit_count = (
+        db.query(models.AuditLog)
+        .filter(
+            models.AuditLog.business_id == test_user.business_id,
+            models.AuditLog.action == "PAYMENT_REVERSED",
+            models.AuditLog.entity_type == "Payment",
+            models.AuditLog.entity_id == payment_id
+        )
+        .count()
+    )
+
+    assert audit_count == 1
