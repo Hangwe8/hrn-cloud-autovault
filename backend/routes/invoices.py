@@ -67,3 +67,20 @@ def get_invoice_balance(
         invoice_id,
         current_user.business_id
     )
+
+@router.post(
+    "/from-quote/{quote_id}",
+    response_model=schemas.InvoiceResponse,
+    status_code=201
+)
+def create_invoice_from_quote(
+    quote_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.create_invoice_from_quote(
+        db=db,
+        quote_id=quote_id,
+        business_id=current_user.business_id,
+        user_id=current_user.id
+    )

@@ -1,3 +1,20 @@
+def get_auth_headers(client):
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": "test-user@example.com",
+            "password": "TestPassword123!"
+        }
+    )
+
+    assert response.status_code == 200
+
+    token = response.json()["access_token"]
+
+    return {
+        "Authorization": f"Bearer {token}"
+    }
+
 def get_token(client, email, password):
     response = client.post(
         "/auth/login",
@@ -193,3 +210,74 @@ def test_dashboard_isolation(
 
     assert data["summary"]["total_customers"] == 0
     assert data["summary"]["total_vehicles"] == 0
+
+
+def test_vehicle_create_and_retrieve(client, test_user):
+    headers = get_auth_headers(client)
+
+    customer_response = client.post(
+        "/customers/",
+        headers=headers,
+        json={
+            "first_name": "Vehicle",
+            "last_name": "Owner",
+            "email": "vehicle-owner@example.com",
+            "phone": "0821114444"
+        }
+    )
+
+    assert customer_response.status_code == 200
+
+    customer_id = customer_response.json()["id"]
+
+    vehicle_response = client.post(
+        "/vehicles/",
+        headers=headers,
+        json={
+            "customer_id": customer_id,
+            "registration": "TEST 166 GP",
+            "vin": "TESTVIN1661234567",
+            "make": "BMW",
+            "model": "M3",
+            "year": 2022,
+            "mileage": 48200
+        }
+    )
+
+    assert vehicle_response.status_code == 200
+
+    vehicle = vehicle_response.json()
+
+    assert vehicle["customer_id"] == customer_id
+    assert vehicle["make"] == "BMW"
+    assert vehicle["model"] == "M3"
+
+    vehicle_id = vehicle["id"]
+
+    retrieve_response = client.get(
+        f"/vehicles/{vehicle_id}",
+        headers=headers
+    )
+
+    assert retrieve_response.status_code == 200
+    assert retrieve_response.json()["id"] == vehicle_id
+
+
+def test_vehicle_rejects_nonexistent_customer(client, test_user):
+    headers = get_auth_headers(client)
+
+    response = client.post(
+        "/vehicles/",
+        headers=headers,
+        json={
+            "customer_id": 999999999,
+            "registration": "INVALID 123",
+            "vin": "INVALIDVIN12345678",
+            "make": "Toyota",
+            "model": "Corolla",
+            "year": 2022,
+            "mileage": 10000
+        }
+    )
+
+    assert response.status_code in [400, 404]

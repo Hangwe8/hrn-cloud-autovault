@@ -13,6 +13,8 @@ from routes import dashboard
 from routes import reports
 from routes import payments
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="HRN Cloud AutoVault API",
     version="1.0.0")
@@ -59,9 +61,22 @@ app.include_router(
     payments.router
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 @app.get("/")
 def root ():
-    return {"message": "HRN Cloud AutoVault API is running"}
+    return {"product": "HRN Cloud AutoVault",
+             "status": "running",
+             "version": "0.1.0"}
 
 @app.get("/health")
 def healthCheck():

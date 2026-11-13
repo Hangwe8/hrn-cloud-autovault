@@ -57,6 +57,22 @@ def get_invoice_payments(
     )
 
 @router.get(
+    "/invoice/{invoice_id}/balance"
+)
+def get_invoice_balance(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(
+        get_current_user
+    )
+):
+    return crud.get_invoice_balance(
+        db,
+        invoice_id,
+        current_user.business_id
+    )
+
+@router.get(
     "/",
     response_model=schemas.PaymentListResponse
 )

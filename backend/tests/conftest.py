@@ -29,12 +29,10 @@ def db():
 
     session = Session(
         bind=connection,
-        expire_on_commit=False
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint"
     )
 
-    session.begin_nested()
-
-    @event.listens_for(session, "after_transaction_end")
     def restart_savepoint(session, transaction):
         if (
             transaction.nested

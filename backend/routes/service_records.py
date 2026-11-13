@@ -33,20 +33,20 @@ def create_service_record(
 
 
 @router.get(
-    "/",
-    response_model=list[schemas.ServiceRecordResponse]
+    "/vehicle/{vehicle_id}",
+    response_model=list[schemas.ServiceRecordResponse],
 )
 def get_service_history(
-    business_id: int,
     vehicle_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(get_current_user),
 ):
     return crud.get_service_history(
         db,
         current_user.business_id,
-        vehicle_id
+        vehicle_id,
     )
+
 
 @router.get(
     "/{service_record_id}",
@@ -68,19 +68,19 @@ def get_service_record(
 
 @router.get(
     "/",
-    response_model=schemas.ServiceRecordListResponse
+    response_model=schemas.ServiceRecordListResponse,
 )
 def get_service_records(
     page: int = 1,
     page_size: int = 25,
     vehicle_id: int | None = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(get_current_user),
 ):
     return crud.get_service_records(
         db,
         current_user.business_id,
         page,
         page_size,
-        vehicle_id
+        vehicle_id,
     )

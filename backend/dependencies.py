@@ -45,7 +45,7 @@ def get_current_user(
         .filter(models.User.id == int(user_id))
         .first()
     )
-
+    
     if user is None:
         raise HTTPException(
             status_code=401,

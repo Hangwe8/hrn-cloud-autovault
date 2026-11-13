@@ -89,7 +89,7 @@ class CustomerVehicleSummaryResponse(BaseModel):
 
 class ServiceRecordCreate(BaseModel):
     vehicle_id: int
-    mileage: int | None = Field
+    mileage: int | None = None
     description: str
     parts_cost: Decimal = Field(default=Decimal("0.00"),ge=0)
     labour_cost: Decimal = Field(default=Decimal("0.00"),ge=0)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import crud
@@ -26,20 +26,6 @@ def create_customer(
 ):
     return crud.create_customer(db, customer, current_user.business_id)
 
-
-@router.get(
-    "/",
-    response_model=list[schemas.CustomerResponse]
-)
-def get_customers(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    return crud.get_customers(
-        db,
-        current_user.business_id
-    )
-
 @router.get(
     "/",
     response_model=schemas.CustomerListResponse
@@ -52,6 +38,12 @@ def get_customers(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    if include_archived and current_user.role not in ["OWNER", "ADMIN"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to view archived customers."
+        )
+    
     return crud.get_customers(
         db,
         current_user.business_id,
@@ -103,6 +95,24 @@ def delete_customer(
 
     )
 
+@router.post(
+    "/{customer_id}/restore",
+    response_model=schemas.CustomerResponse
+)
+def restore_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(
+        require_roles("OWNER", "ADMIN")
+    )
+):
+    return crud.restore_customer(
+        db,
+        customer_id,
+        current_user.business_id,
+        current_user.id
+    )
+
 @router.get(
     "/{customer_id}/vehicles",
     response_model=schemas.CustomerVehicleSummaryResponse
@@ -116,4 +126,34 @@ def get_customer_vehicle_summary(
         db,
         current_user.business_id,
         customer_id
+    )
+
+@router.get(
+    "/{customer_id}",
+    response_model=schemas.CustomerResponse
+)
+def get_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_customer(
+        db,
+        customer_id,
+        current_user.business_id
+    )
+
+@router.get(
+    "/{customer_id}",
+    response_model=schemas.CustomerResponse
+)
+def get_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return crud.get_customer(
+        db,
+        customer_id,
+        current_user.business_id
     )

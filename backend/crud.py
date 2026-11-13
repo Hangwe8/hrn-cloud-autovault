@@ -78,17 +78,29 @@ def create_customer(
     return db_customer
 
 
-def get_customers(
+def get_customer(
     db: Session,
+    customer_id: int,
     business_id: int
 ):
-    return (
+    customer = (
         db.query(models.Customer)
         .filter(
-            models.Customer.business_id == business_id
+            models.Customer.id == customer_id,
+            models.Customer.business_id == business_id,
+            models.Customer.deleted_at.is_(None)
         )
-        .all()
+        .first()
     )
+
+    if customer is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer not found"
+        )
+
+    return customer
+
 def create_vehicle(
     db: Session,
     vehicle: schemas.VehicleCreate,
@@ -109,7 +121,7 @@ def create_vehicle(
         )
 
     db_vehicle = models.Vehicle(
-        business_id=vehicle.business_id,
+        business_id=business_id,
         customer_id=vehicle.customer_id,
         registration=vehicle.registration,
         vin=vehicle.vin,
@@ -219,38 +231,37 @@ def get_vehicles(
 def create_service_record(
     db: Session,
     service: schemas.ServiceRecordCreate,
-    business_id: int
+    business_id: int,
 ):
-    vehicle = (db.query(models.Vehicle)
-                .filter(models.Vehicle.id == service.vehicle_id,
-                        models.Vehicle.business_id == service.business_id,
-                        models.Vehicle.deleted_at.is_(None))
-                .first()
+    vehicle = (
+        db.query(models.Vehicle)
+        .filter(
+            models.Vehicle.id == service.vehicle_id,
+            models.Vehicle.business_id == business_id,
+            models.Vehicle.deleted_at.is_(None),
+        )
+        .first()
     )
 
     if vehicle is None:
         raise HTTPException(
             status_code=404,
-            detail="Vehicle not found"
+            detail="Vehicle not found",
         )
-    
+
     parts_cost = money(service.parts_cost)
     labour_cost = money(service.labour_cost)
-
-    total_cost = (
-        parts_cost +
-        labour_cost
-    )
+    total_cost = parts_cost + labour_cost
 
     db_service = models.ServiceRecord(
-        business_id=service.business_id,
-        vehicle_id=service.vehicle_id,
+        business_id=business_id,
+        vehicle_id=vehicle.id,
         mileage=service.mileage,
         description=service.description,
         parts_cost=parts_cost,
         labour_cost=labour_cost,
         total_cost=total_cost,
-        technician=service.technician
+        technician=service.technician,
     )
 
     db.add(db_service)
@@ -276,11 +287,14 @@ def get_service_history(
         )
         .all()
     )
-def create_job_card(db: Session, job_card: schemas.JobCardCreate, business_id: int, user_id: int):
+def create_job_card(db: Session, 
+                    job_card: schemas.JobCardCreate, 
+                    business_id: int, 
+                    user_id: int):
 
     vehicle = (db.query(models.Vehicle)
                 .filter(models.Vehicle.id == job_card.vehicle_id,
-                        models.Vehicle.business_id == job_card.business_id,
+                        models.Vehicle.business_id == business_id,
                         models.Vehicle.deleted_at.is_(None))
                 .first()
     )
@@ -294,7 +308,7 @@ def create_job_card(db: Session, job_card: schemas.JobCardCreate, business_id: i
     if job_card.assigned_staff_id is not None:
         staff = (db.query(models.User)
                     .filter(models.User.id == job_card.assigned_staff_id,
-                            models.User.business_id == job_card.business_id)
+                            models.User.business_id == business_id)
                     .first()
         )
 
@@ -305,9 +319,9 @@ def create_job_card(db: Session, job_card: schemas.JobCardCreate, business_id: i
             )
         
     db_job_card = models.JobCard(
-        business_id=job_card.business_id,
-        vehicle_id=job_card.vehicle_id,
-        assigned_staff_id=job_card.assigned_staff_id,
+        business_id= business_id,
+        vehicle_id=vehicle.id,
+        assigned_staff_id= job_card.assigned_staff_id,
         status=job_card.status,
         description=job_card.description,
         estimated_cost=job_card.estimated_cost,
@@ -315,15 +329,17 @@ def create_job_card(db: Session, job_card: schemas.JobCardCreate, business_id: i
     )
 
     db.add(db_job_card)
+    db.flush()
 
     audit.create_audit_log(
         db=db,
         user_id=user_id,
+        business_id=business_id,
         action="JOB_CARD_CREATED",
         entity_type="JobCard",
         entity_id=db_job_card.id,
         details=f"Job card created for vehicle {vehicle.id}"
-    )
+        )
 
     db.commit()
     db.refresh(db_job_card)
@@ -658,10 +674,14 @@ def update_quote_status(
     audit.create_audit_log(
         db=db,
         user_id=user_id,
+        business_id=business_id,
         action=f"QUOTE_{status}",
         entity_type="Quote",
         entity_id=quote.id,
-        details=f"Quote status changed from {current_status} to {status}"
+        details=(
+            f"Quote status changed from "
+            f"{current_status} to {status}"
+        )
     )
 
     db.commit()
@@ -751,7 +771,7 @@ def create_invoice_from_quote(
         action="INVOICE_CREATED",
         entity_type="Invoice",
         entity_id=invoice.id,
-        details=(f"Invoice {db_invoice.invoice_number}"
+        details=(f"Invoice {invoice.invoice_number}"
         f" created from quote {quote.id}")
     )
 
@@ -1099,14 +1119,62 @@ def delete_customer(
     )
 
     customer.deleted_at = datetime.utcnow()
+
     audit.create_audit_log(
         db=db,
+        business_id=business_id,
         user_id=user_id,
         action="CUSTOMER_ARCHIVED",
         entity_type="Customer",
         entity_id=customer.id,
         details=f"Customer {customer.first_name} {customer.last_name} archived"
     )
+
+    db.commit()
+    db.refresh(customer)
+
+    return customer
+
+
+def restore_customer(
+    db: Session,
+    customer_id: int,
+    business_id: int,
+    user_id: int
+):
+    customer = (
+        db.query(models.Customer)
+        .filter(
+            models.Customer.id == customer_id,
+            models.Customer.business_id == business_id
+        )
+        .first()
+    )
+
+    if customer is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer not found"
+        )
+
+    if customer.deleted_at is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Customer is already active"
+        )
+
+    customer.deleted_at = None
+
+    audit.create_audit_log(
+        db=db,
+        business_id=business_id,
+        user_id=user_id,
+        action="CUSTOMER_RESTORED",
+        entity_type="Customer",
+        entity_id=customer.id,
+        details=f"Customer {customer.first_name} {customer.last_name} restored"
+    )
+
     db.commit()
     db.refresh(customer)
 
@@ -1547,17 +1615,16 @@ def get_dashboard_summary(
 
     now = datetime.now(timezone.utc)
 
+    if start_date is None:
+        start_date = now.replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0
+    )
 
-    if start_date is not None:
-        month_start = now.replace(
-            day=1,
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
-        )
-    
-    if end_date is not None:
+    if end_date is None:
         end_date = now
 
     monthly_revenue = (
@@ -2144,33 +2211,39 @@ def get_invoice_balance(
         )
 
     amount_paid = (
-        db.query(models.Payment)
-        .filter(
-            models.Payment.invoice_id == invoice_id,
-            models.Payment.business_id == business_id,
-            models.Payment.reversed_at.is_(None)
-        )
-        .with_entities(
+        db.query(
             func.coalesce(
                 func.sum(models.Payment.amount),
                 0
             )
         )
+        .filter(
+            models.Payment.invoice_id == invoice_id,
+            models.Payment.business_id == business_id,
+            models.Payment.reversed_at.is_(None)
+        )
         .scalar()
     )
 
     amount_paid = money(amount_paid)
+    invoice_total = money(invoice.total)
 
-    balance = money(
-        invoice.total - amount_paid
-    )
+    balance = money(invoice_total - amount_paid)
+
+    # Derive status from the current active payment total.
+    if amount_paid <= Decimal("0.00"):
+        status = "UNPAID"
+    elif amount_paid < invoice_total:
+        status = "PARTIALLY_PAID"
+    else:
+        status = "PAID"
 
     return {
         "invoice_id": invoice.id,
-        "invoice_total": money(invoice.total),
+        "invoice_total": invoice_total,
         "amount_paid": amount_paid,
         "balance": balance,
-        "status": invoice.status
+        "status": status
     }
 
 def get_payment_summary(

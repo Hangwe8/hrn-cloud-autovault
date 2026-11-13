@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -46,11 +46,21 @@ def monthly_revenue(
     response_model=schemas.PaymentSummaryResponse
 )
 def payment_summary(
-    start_date: str | None = None,
-    end_date: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    if (
+        start_date is not None
+        and end_date is not None
+        and start_date > end_date
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="end_date must be greater than or equal to start_date"
+        )
+
     return crud.get_payment_summary(
         db,
         current_user.business_id,
